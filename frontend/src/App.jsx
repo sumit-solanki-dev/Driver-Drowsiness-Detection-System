@@ -289,7 +289,7 @@ export default function App() {
             )}
             <canvas ref={canvasRef} className="hidden" />
             {!backendOnline && (
-              <p className="text-rose-300 text-sm mt-3">Backend offline. Please start backend on `http://127.0.0.1:8000`.</p>
+              <p className="text-rose-300 text-sm mt-3">Backend offline. Could not reach `{API.base}`.</p>
             )}
           </section>
 

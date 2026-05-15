@@ -24,19 +24,29 @@ app = FastAPI(title="Driver Drowsiness API", version="2.0.0")
 
 # Comma-separated origins via env, e.g.:
 # CORS_ORIGINS=https://your-frontend.vercel.app,https://www.yourdomain.com
+def normalize_origin(origin: str) -> str:
+    cleaned = origin.strip().strip("'\"")
+    return cleaned[:-1] if cleaned.endswith("/") else cleaned
+
+
 cors_origins_env = os.getenv("CORS_ORIGINS", "")
+cors_origin_regex = os.getenv("CORS_ORIGIN_REGEX", "").strip().strip("'\"")
 if cors_origins_env.strip():
-    cors_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+    cors_origins = [normalize_origin(origin) for origin in cors_origins_env.split(",") if normalize_origin(origin)]
 else:
     cors_origins = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]
 
+allow_all_origins = "*" in cors_origins
+cors_allow_credentials = not allow_all_origins
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=True,
+    allow_origin_regex=cors_origin_regex or None,
+    allow_credentials=cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
