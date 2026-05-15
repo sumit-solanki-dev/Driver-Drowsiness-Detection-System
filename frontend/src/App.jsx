@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { API } from "./api";
 import StatusCard from "./components/StatusCard";
 import AlertBox from "./components/AlertBox";
@@ -36,7 +36,6 @@ export default function App() {
   const streamRef = useRef(null);
   const inferTimerRef = useRef(null);
   const alertHideTimerRef = useRef(null);
-  const alarmRef = useRef(null);
   const lastSoundEventRef = useRef(0);
 
   const requestCameraPermission = async () => {
@@ -58,16 +57,15 @@ export default function App() {
       }
       streamRef.current = stream;
       setCameraPermission("granted");
-      if (alarmRef.current) {
-        try {
-          alarmRef.current.volume = 1.0;
-          await alarmRef.current.play();
-          alarmRef.current.pause();
-          alarmRef.current.currentTime = 0;
-          setAudioReady(true);
-        } catch {
-          setAudioReady(false);
-        }
+      try {
+        const primer = new Audio("/music.wav");
+        primer.volume = 1.0;
+        await primer.play();
+        primer.pause();
+        primer.currentTime = 0;
+        setAudioReady(true);
+      } catch {
+        setAudioReady(false);
       }
     } catch {
       setCameraPermission("denied");
@@ -153,14 +151,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    alarmRef.current = new Audio("/music.wav");
-    alarmRef.current.loop = false;
-    return () => {
-      if (alarmRef.current) alarmRef.current.pause();
-    };
-  }, []);
-
-  useEffect(() => {
     const checkHealth = async () => {
       try {
         const res = await fetch(API.health, { cache: "no-store" });
@@ -194,7 +184,6 @@ export default function App() {
   }, [cameraPermission]);
 
   useEffect(() => {
-    if (!alarmRef.current) return;
     if (!audioReady) return;
     if (!payload.alert.play_sound) return;
 
@@ -202,23 +191,18 @@ export default function App() {
     if (soundEventId === 0 || soundEventId === lastSoundEventRef.current) return;
     lastSoundEventRef.current = soundEventId;
 
-    let plays = 0;
-    const playNext = async () => {
-      if (!alarmRef.current || plays >= 2) {
-        if (alarmRef.current) alarmRef.current.onended = null;
-        return;
-      }
-      plays += 1;
-      alarmRef.current.currentTime = 0;
-      try {
-        await alarmRef.current.play();
-      } catch {
-        return;
-      }
-      alarmRef.current.onended = playNext;
-    };
+    const playOnce = () =>
+      new Promise((resolve) => {
+        const tone = new Audio("/music.wav");
+        tone.volume = 1.0;
+        tone.onended = resolve;
+        tone.play().catch(() => resolve(null));
+      });
 
-    playNext();
+    (async () => {
+      await playOnce();
+      await playOnce();
+    })();
   }, [payload.alert.play_sound, payload.alert.sound_event_id, audioReady]);
 
   useEffect(() => {
@@ -233,7 +217,7 @@ export default function App() {
 
     if (alertHideTimerRef.current) clearTimeout(alertHideTimerRef.current);
     alertHideTimerRef.current = setTimeout(() => {
-      setDisplayAlert({ show: false, message: "", severity: "LOW" });
+      setDisplayAlert({ show: false, message: "", severity: "LOW", play_sound: false, sound_event_id: 0 });
       alertHideTimerRef.current = null;
     }, 3000);
   }, [payload.alert]);
@@ -248,11 +232,11 @@ export default function App() {
     };
   }, []);
 
-  const driverTone = useMemo(() => {
+  const driverTone = (() => {
     if (payload.status.driver_status === "SLEEPING") return "danger";
     if (payload.status.driver_status === "DROWSY") return "warn";
     return "good";
-  }, [payload.status.driver_status]);
+  })();
 
   const alertTone = payload.status.alert_level === "HIGH" ? "danger" : payload.status.alert_level === "MEDIUM" ? "warn" : "good";
 
