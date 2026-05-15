@@ -96,9 +96,16 @@ DROWSY_FRAMES = 16
 MOUTH_THRESHOLD = 0.62
 MOUTH_FRAMES = 4
 
-MODEL_PATH = "models/shape_predictor_68_face_landmarks.dat"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_CANDIDATES = [
+    os.path.join(BASE_DIR, "models", "shape_predictor_68_face_landmarks.dat"),
+    os.path.join(BASE_DIR, "..", "models", "shape_predictor_68_face_landmarks.dat"),
+]
+MODEL_PATH = next((p for p in MODEL_CANDIDATES if os.path.exists(p)), MODEL_CANDIDATES[0])
 if not os.path.exists(MODEL_PATH):
-    raise FileNotFoundError(f"Missing model file: {MODEL_PATH}")
+    raise FileNotFoundError(
+        f"Missing model file. Checked: {', '.join(MODEL_CANDIDATES)}"
+    )
 # dlib exposes some symbols dynamically, which can confuse static analyzers (Pylance).
 DETECTOR = cast(Any, getattr(dlib, "get_frontal_face_detector"))()
 PREDICTOR = cast(Any, getattr(dlib, "shape_predictor"))(MODEL_PATH)
