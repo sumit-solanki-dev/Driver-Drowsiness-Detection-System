@@ -29,6 +29,7 @@ export default function App() {
   const [cameraPermission, setCameraPermission] = useState("pending");
   const [cameraError, setCameraError] = useState("");
   const [audioReady, setAudioReady] = useState(false);
+  const [audioBlocked, setAudioBlocked] = useState(false);
 
   const sessionIdRef = useRef(null);
   const videoRef = useRef(null);
@@ -37,6 +38,25 @@ export default function App() {
   const inferTimerRef = useRef(null);
   const alertHideTimerRef = useRef(null);
   const lastSoundEventRef = useRef(0);
+  const audioPrimerRef = useRef(null);
+
+  const unlockAlertAudio = async () => {
+    try {
+      const primer = audioPrimerRef.current || new Audio("/music.wav");
+      primer.volume = 1.0;
+      audioPrimerRef.current = primer;
+      await primer.play();
+      primer.pause();
+      primer.currentTime = 0;
+      setAudioReady(true);
+      setAudioBlocked(false);
+      return true;
+    } catch {
+      setAudioReady(false);
+      setAudioBlocked(true);
+      return false;
+    }
+  };
 
   const requestCameraPermission = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -46,6 +66,7 @@ export default function App() {
     }
     try {
       setCameraError("");
+      await unlockAlertAudio();
       let stream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -57,16 +78,6 @@ export default function App() {
       }
       streamRef.current = stream;
       setCameraPermission("granted");
-      try {
-        const primer = new Audio("/music.wav");
-        primer.volume = 1.0;
-        await primer.play();
-        primer.pause();
-        primer.currentTime = 0;
-        setAudioReady(true);
-      } catch {
-        setAudioReady(false);
-      }
     } catch {
       setCameraPermission("denied");
       setCameraError("Could not access webcam. Check browser site permissions and camera usage in other apps.");
@@ -184,7 +195,6 @@ export default function App() {
   }, [cameraPermission]);
 
   useEffect(() => {
-    if (!audioReady) return;
     if (!payload.alert.play_sound) return;
 
     const soundEventId = payload.alert.sound_event_id || 0;
@@ -196,10 +206,16 @@ export default function App() {
         const tone = new Audio("/music.wav");
         tone.volume = 1.0;
         tone.onended = resolve;
-        tone.play().catch(() => resolve(null));
+        tone.play().catch(() => {
+          setAudioBlocked(true);
+          resolve(null);
+        });
       });
 
     (async () => {
+      if (!audioReady) {
+        await unlockAlertAudio();
+      }
       await playOnce();
       await playOnce();
     })();
@@ -259,6 +275,18 @@ export default function App() {
               )}
             </div>
             {cameraError && <p className="text-rose-300 text-sm mt-3">{cameraError}</p>}
+            {audioBlocked && (
+              <div className="mt-3 flex items-center gap-3">
+                <p className="text-amber-300 text-sm">Alert sound is blocked by browser. Click to enable audio.</p>
+                <button
+                  type="button"
+                  onClick={unlockAlertAudio}
+                  className="px-3 py-1 rounded-lg bg-amber-300 text-slate-900 text-sm font-semibold hover:brightness-105"
+                >
+                  Enable Sound
+                </button>
+              </div>
+            )}
             <canvas ref={canvasRef} className="hidden" />
             {!backendOnline && (
               <p className="text-rose-300 text-sm mt-3">Backend offline. Please start backend on `http://127.0.0.1:8000`.</p>
