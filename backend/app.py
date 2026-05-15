@@ -130,6 +130,8 @@ def eye_aspect_ratio(eye: np.ndarray) -> float:
     a = distance.euclidean(eye[1], eye[5])
     b = distance.euclidean(eye[2], eye[4])
     c = distance.euclidean(eye[0], eye[3])
+    if c <= 1e-6:
+        return 0.0
     return (a + b) / (2.0 * c)
 
 
@@ -137,6 +139,8 @@ def mouth_aspect_ratio(mouth: np.ndarray) -> float:
     a = distance.euclidean(mouth[2], mouth[10])
     b = distance.euclidean(mouth[4], mouth[8])
     c = distance.euclidean(mouth[0], mouth[6])
+    if c <= 1e-6:
+        return 0.0
     return (a + b) / (2.0 * c)
 
 
@@ -189,8 +193,26 @@ def cleanup_sessions() -> None:
 
 
 def run_inference(session: SessionState, frame: np.ndarray) -> tuple[DriverStatus, DriverStats]:
-    frame = imutils.resize(frame, width=640)
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    frame = np.ascontiguousarray(frame)
+    if frame.dtype != np.uint8:
+        frame = cv2.convertScaleAbs(frame)
+
+    if frame.ndim == 2:
+        gray = frame
+    elif frame.ndim == 3 and frame.shape[2] == 4:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
+    elif frame.ndim == 3 and frame.shape[2] == 3:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    else:
+        status = DriverStatus(face_detected=False)
+        session.closed_eye_counter = 0
+        session.yawn_counter = 0
+        session.yawn_in_progress = False
+        session.status = status
+        return status, session.stats
+
+    gray = imutils.resize(gray, width=640)
+    gray = np.ascontiguousarray(gray, dtype=np.uint8)
     subjects = DETECTOR(gray, 0)
 
     status = DriverStatus()
