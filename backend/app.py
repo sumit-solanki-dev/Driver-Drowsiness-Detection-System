@@ -91,6 +91,7 @@ class SessionState:
     eye_alarm_armed: bool = True
     sound_event_id: int = 0
     last_alerted_drowsiness_events: int = 0
+    last_sound_triggered_at: float = 0.0
     last_seen: float = 0.0
 
 
@@ -111,6 +112,7 @@ SLEEPING_FRAMES = 28
 DROWSY_FRAMES = 16
 MOUTH_THRESHOLD = 0.62
 MOUTH_FRAMES = 4
+ALERT_REPEAT_SECONDS = 3.0
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_CANDIDATES = [
@@ -347,6 +349,17 @@ def infer(payload: InferRequest) -> JSONResponse:
             session.eye_alarm_armed = False
         elif not eye_danger:
             session.eye_alarm_armed = True
+
+        # Keep reminding while drowsy/sleeping (at most once every ALERT_REPEAT_SECONDS).
+        now = time.time()
+        if play_sound:
+            session.last_sound_triggered_at = now
+        elif status.driver_status in {"DROWSY", "SLEEPING"} and (
+            now - session.last_sound_triggered_at >= ALERT_REPEAT_SECONDS
+        ):
+            play_sound = True
+            session.sound_event_id += 1
+            session.last_sound_triggered_at = now
 
         alert = {
             "show": status.driver_status in {"DROWSY", "SLEEPING"},

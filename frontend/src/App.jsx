@@ -39,6 +39,7 @@ export default function App() {
   const alertHideTimerRef = useRef(null);
   const lastSoundEventRef = useRef(0);
   const audioPrimerRef = useRef(null);
+  const alertAudioRef = useRef(null);
 
   const unlockAlertAudio = async () => {
     try {
@@ -199,16 +200,18 @@ export default function App() {
 
     const soundEventId = payload.alert.sound_event_id || 0;
     if (soundEventId === 0 || soundEventId === lastSoundEventRef.current) return;
-    lastSoundEventRef.current = soundEventId;
 
     const playOnce = () =>
       new Promise((resolve) => {
-        const tone = new Audio("/music.wav");
+        const tone = alertAudioRef.current || new Audio("/music.wav");
+        alertAudioRef.current = tone;
         tone.volume = 1.0;
-        tone.onended = resolve;
+        tone.pause();
+        tone.currentTime = 0;
+        tone.onended = () => resolve(true);
         tone.play().catch(() => {
           setAudioBlocked(true);
-          resolve(null);
+          resolve(false);
         });
       });
 
@@ -216,8 +219,11 @@ export default function App() {
       if (!audioReady) {
         await unlockAlertAudio();
       }
-      await playOnce();
-      await playOnce();
+      const played = await playOnce();
+      if (played) {
+        lastSoundEventRef.current = soundEventId;
+        setAudioBlocked(false);
+      }
     })();
   }, [payload.alert.play_sound, payload.alert.sound_event_id, audioReady]);
 
@@ -240,6 +246,9 @@ export default function App() {
 
   useEffect(() => {
     return () => {
+      if (alertAudioRef.current) {
+        alertAudioRef.current.pause();
+      }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
       }
