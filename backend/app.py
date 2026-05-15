@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import base64
+import logging
 import os
 import time
+import traceback
 import uuid
 from collections import deque
 from dataclasses import dataclass, asdict
@@ -21,6 +23,7 @@ from scipy.spatial import distance
 
 
 app = FastAPI(title="Driver Drowsiness API", version="2.0.0")
+LOGGER = logging.getLogger("drowsiness_api")
 
 # Comma-separated origins via env, e.g.:
 # CORS_ORIGINS=https://your-frontend.vercel.app,https://www.yourdomain.com
@@ -31,6 +34,8 @@ def normalize_origin(origin: str) -> str:
 
 cors_origins_env = os.getenv("CORS_ORIGINS", "")
 cors_origin_regex = os.getenv("CORS_ORIGIN_REGEX", "").strip().strip("'\"")
+if not cors_origin_regex:
+    cors_origin_regex = r"https://.*\.vercel\.app"
 if cors_origins_env.strip():
     cors_origins = [normalize_origin(origin) for origin in cors_origins_env.split(",") if normalize_origin(origin)]
 else:
@@ -305,59 +310,63 @@ def start_session(payload: StartSessionRequest) -> JSONResponse:
 
 @app.post("/api/infer")
 def infer(payload: InferRequest) -> JSONResponse:
-    session = get_or_create_session(payload.session_id)
-    frame = decode_image(payload.image_base64)
-    if frame is None:
-        return JSONResponse({"error": "Invalid image"}, status_code=400)
+    try:
+        session = get_or_create_session(payload.session_id)
+        frame = decode_image(payload.image_base64)
+        if frame is None:
+            return JSONResponse({"error": "Invalid image"}, status_code=400)
 
-    status, stats = run_inference(session, frame)
-    stats_json = asdict(stats)
-    stats_json["session_seconds"] = int(time.time() - stats.session_start)
+        status, stats = run_inference(session, frame)
+        stats_json = asdict(stats)
+        stats_json["session_seconds"] = int(time.time() - stats.session_start)
 
-    recent_yawns = yawns_in_last_window(session, 600)
-    play_sound = False
-    # Always trigger one sound when a new drowsiness transition is detected.
-    if session.stats.drowsiness_events > session.last_alerted_drowsiness_events:
-        play_sound = True
-        session.sound_event_id += 1
-        session.last_alerted_drowsiness_events = session.stats.drowsiness_events
+        recent_yawns = yawns_in_last_window(session, 600)
+        play_sound = False
+        # Always trigger one sound when a new drowsiness transition is detected.
+        if session.stats.drowsiness_events > session.last_alerted_drowsiness_events:
+            play_sound = True
+            session.sound_event_id += 1
+            session.last_alerted_drowsiness_events = session.stats.drowsiness_events
 
-    # Trigger sound only when yawns are more than 3 (i.e., 4+) in the last 10 minutes.
-    # Fire once per threshold-cross event, then re-arm only after window drops below 4.
-    if recent_yawns >= 4 and session.yawn_alarm_armed:
-        play_sound = True
-        session.sound_event_id += 1
-        session.yawn_alarm_armed = False
-    elif recent_yawns < 4:
-        session.yawn_alarm_armed = True
+        # Trigger sound only when yawns are more than 3 (i.e., 4+) in the last 10 minutes.
+        # Fire once per threshold-cross event, then re-arm only after window drops below 4.
+        if recent_yawns >= 4 and session.yawn_alarm_armed:
+            play_sound = True
+            session.sound_event_id += 1
+            session.yawn_alarm_armed = False
+        elif recent_yawns < 4:
+            session.yawn_alarm_armed = True
 
-    # Trigger sound for eye-closure danger transitions as well.
-    eye_danger = status.driver_status == "SLEEPING" or (
-        status.driver_status == "DROWSY" and status.eye_status == "CLOSED"
-    )
-    if eye_danger and session.eye_alarm_armed:
-        play_sound = True
-        session.sound_event_id += 1
-        session.eye_alarm_armed = False
-    elif not eye_danger:
-        session.eye_alarm_armed = True
+        # Trigger sound for eye-closure danger transitions as well.
+        eye_danger = status.driver_status == "SLEEPING" or (
+            status.driver_status == "DROWSY" and status.eye_status == "CLOSED"
+        )
+        if eye_danger and session.eye_alarm_armed:
+            play_sound = True
+            session.sound_event_id += 1
+            session.eye_alarm_armed = False
+        elif not eye_danger:
+            session.eye_alarm_armed = True
 
-    alert = {
-        "show": status.driver_status in {"DROWSY", "SLEEPING"},
-        "message": (
-            "Drowsiness detected. Please take a break."
-            if status.driver_status == "DROWSY"
-            else "Critical: Driver appears sleeping!"
-            if status.driver_status == "SLEEPING"
-            else "No alert"
-        ),
-        "severity": status.alert_level,
-        "play_sound": play_sound,
-        "sound_event_id": session.sound_event_id,
-        "recent_yawns_10m": recent_yawns,
-    }
+        alert = {
+            "show": status.driver_status in {"DROWSY", "SLEEPING"},
+            "message": (
+                "Drowsiness detected. Please take a break."
+                if status.driver_status == "DROWSY"
+                else "Critical: Driver appears sleeping!"
+                if status.driver_status == "SLEEPING"
+                else "No alert"
+            ),
+            "severity": status.alert_level,
+            "play_sound": play_sound,
+            "sound_event_id": session.sound_event_id,
+            "recent_yawns_10m": recent_yawns,
+        }
 
-    return JSONResponse({"status": asdict(status), "stats": stats_json, "alert": alert})
+        return JSONResponse({"status": asdict(status), "stats": stats_json, "alert": alert})
+    except Exception as exc:
+        LOGGER.error("Infer failed: %s\n%s", exc, traceback.format_exc())
+        return JSONResponse({"error": f"Inference failed: {exc}"}, status_code=500)
 
 
 @app.get("/api/session/{session_id}")
