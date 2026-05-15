@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: drowsiness-backend
+    env: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: .
+    autoDeploy: true
+    envVars:
+      - key: CORS_ORIGINS
+        sync: false

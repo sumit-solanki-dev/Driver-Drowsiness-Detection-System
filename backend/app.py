@@ -17,7 +17,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from imutils import face_utils
-from scipy.spatial import distance
 
 
 app = FastAPI(title="Driver Drowsiness API", version="2.0.0")
@@ -116,16 +115,16 @@ PREDICTOR = cast(Any, getattr(dlib, "shape_predictor"))(MODEL_PATH)
 
 
 def eye_aspect_ratio(eye: np.ndarray) -> float:
-    a = distance.euclidean(eye[1], eye[5])
-    b = distance.euclidean(eye[2], eye[4])
-    c = distance.euclidean(eye[0], eye[3])
+    a = float(np.linalg.norm(eye[1] - eye[5]))
+    b = float(np.linalg.norm(eye[2] - eye[4]))
+    c = float(np.linalg.norm(eye[0] - eye[3]))
     return (a + b) / (2.0 * c)
 
 
 def mouth_aspect_ratio(mouth: np.ndarray) -> float:
-    a = distance.euclidean(mouth[2], mouth[10])
-    b = distance.euclidean(mouth[4], mouth[8])
-    c = distance.euclidean(mouth[0], mouth[6])
+    a = float(np.linalg.norm(mouth[2] - mouth[10]))
+    b = float(np.linalg.norm(mouth[4] - mouth[8]))
+    c = float(np.linalg.norm(mouth[0] - mouth[6]))
     return (a + b) / (2.0 * c)
 
 
