@@ -17,7 +17,7 @@ WORKDIR /app
 
 COPY backend/requirements.txt /app/backend/requirements.txt
 RUN pip install --upgrade pip setuptools wheel && \
-    pip install --only-binary=:all: -r /app/backend/requirements.txt
+    pip install --prefer-binary -r /app/backend/requirements.txt
 
 COPY backend /app/backend
 COPY models /app/models
