@@ -9,12 +9,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     NUMEXPR_NUM_THREADS=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    cmake \
-    pkg-config \
-    libopenblas-dev \
-    liblapack-dev \
-    libgomp1 \
     libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
